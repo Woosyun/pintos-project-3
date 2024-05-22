@@ -5,6 +5,7 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -156,6 +157,10 @@ page_fault (struct intr_frame *f)
     f->eax = 0xffffffff;
     return;
   }
+
+	//TODO: pull page if user process and access rights violated
+	if (!handle_page_fault (f, fault_addr, not_present, write, user))
+		thread_exit ();	
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

@@ -103,6 +103,12 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    /* --- project 3 start --- */
+    uint8_t temp_esp; // stack pointer for page fault occurred in kernel
+    struct hash *pages;
+    struct list mmap_li;
+    int mmap_fd;
+    /* --- project 3 end --- */
 
     // Project 2: file descriptors and process table
     /* Owned by userprog/process.c and userprog/syscall.c */

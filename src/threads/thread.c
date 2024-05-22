@@ -610,6 +610,12 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->file_descriptors);
   t->executing_file = NULL;
 #endif
+	/* --- project 3 start --- */
+	t->pagedir = NULL;
+	hash_init (t->pages);
+	list_init (&t->mmap_li);
+	t->mmap_fd = 2;
+	/* --- project 3 end --- */
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

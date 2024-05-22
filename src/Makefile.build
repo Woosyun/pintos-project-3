@@ -11,6 +11,11 @@ include ../../tests/Make.tests
 # Compiler and assembler options.
 kernel.bin: CPPFLAGS += -I$(SRCDIR)/lib/kernel
 
+# Virtual memory
+vm_SRC = vm/page.c
+vm_SRC += vm/frame.c
+vm_SRC += vm/mmap.c
+
 # Core kernel.
 threads_SRC  = threads/start.S		# Startup code.
 threads_SRC += threads/init.c		# Main program.

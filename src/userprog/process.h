@@ -44,3 +44,4 @@ struct file_desc {
 
 #endif /* userprog/process.h */
 
+bool install_page (void *upage, void *kpage, bool writable);

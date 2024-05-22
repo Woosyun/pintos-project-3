@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -12,6 +13,9 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "lib/kernel/list.h"
+#include "vm/mmap.h"
+#include "vm/page.h"
+#include "userprog/pagedir.h"
 
 #define STDIN 0
 #define STDOUT 1
@@ -40,6 +44,8 @@ unsigned sys_tell(int fd);
 void sys_close(int fd);
 int sys_read(int fd, void *buffer, unsigned size);
 int sys_write(int fd, const void *buffer, unsigned size);
+static int sys_mmap (int fd, void *addr);
+static int sys_munmap (int mmap_id);
 
 struct lock filesys_lock;
 
@@ -70,7 +76,7 @@ syscall_handler (struct intr_frame *f)
 
   // The system call number is in the 32-bit word at the caller's stack pointer.
   memread_user(f->esp, &syscall_number, intsize);
-
+	thread_current ()->temp_esp = f->esp;
 
   // Dispatch w.r.t system call number
   // SYS_*** constants are defined in syscall-nr.h
@@ -220,6 +226,24 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
+	case SYS_MMAP: // 13
+		{
+			int id;
+			void *addr;
+			memread_user (f->esp + 4, &id, sizeof(id));
+			memread_user (f->esp + 8, &addr, sizeof(addr));
+
+			f->eax = sys_mmap (id, addr);
+			break;
+		}
+	case SYS_MUNMAP: // 14
+		{
+			int id;
+			memread_user (f->esp + 4, &id, sizeof(id));
+
+			sys_munmap (fd);
+			break;
+		}
 
   /* unhandled case */
   default:
@@ -307,7 +331,6 @@ int sys_open(const char* file) {
   fd->file = file_opened; //file save
   struct thread *current = thread_current();
   struct list* fd_list = &current->file_descriptors;
-  struct thread *back;
   bool empty = list_empty(fd_list);
   if ( empty ) fd->id = 3;
   else {
@@ -385,8 +408,8 @@ int sys_read(int fd, void *buffer, unsigned size) {
 
   if(fd == STDIN) {
     int i;
-    for(i = 0; i < size; ++i) {
-      if(! put_user(buffer + i, input_getc()) ) {
+    for(i = 0; i < (int)size; ++i) {
+      if(! put_user(buffer + i, (int)input_getc()) ) {
         lock_release (&filesys_lock);
         sys_exit(-1); // segfault
       }
@@ -434,6 +457,87 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   return ret;
 }
 
+/* --- project 3 start --- */
+int
+sys_mmap (int id, void *addr)
+{
+	struct thread *t = thread_current ();
+	struct file_desc *file_d = find_file_desc (t, id);
+	struct mmap *m = malloc (sizeof *m);
+	size_t offset;
+	off_t length;
+
+	if (m == NULL || addr == NULL || pg_ofs (addr) != 0 || fd <= 1)
+		return -1;
+	
+
+	lock_acquire (&filesys_lock);
+	m->file = file_reopen (file_d->file);
+	lock_release (&filesys_lock);
+	if (m->file == NULL)
+	{
+		free (m);
+		return -1;
+	}
+
+	m->id = t->mmap_fd++;
+	m->base = addr;
+	m->page_count = 0;
+	list_push_front (&t->mmap_li, &m->mmap_elem);
+
+	lock_acquire (&filesys_lock);
+	length = file_length (m->file);
+	lock_release (&filesys_lock);
+	while (length > 0)
+	{
+		struct page *p = allocate_page ((uint8_t *)addr + offset, false);
+		if (p == NULL)
+		{
+			sys_munmap (m->id);
+			return -1;
+		}
+		p->file = m->file;
+		p->offset = offset;
+		p->file_bytes = length >= PGSIZE ? PGSIZE : length;
+		offset += p->file_bytes;
+		length -= p->file_bytes;
+		m->page_count++;
+	}
+	return m->id;
+}
+static int
+sys_munmap (int mmap_id)
+{
+	struct thread *t = thread_current ();
+	struct mmap *m = lookup_mmap (mmap_id);
+
+	list_remove (&m->mmap_elem);
+
+	unsigned i=0;
+	for (; i < m->page_count; i++)
+	{
+		//if dirty, then write back to disk
+		const void *vpage = ((const void *)(m->base + (PGSIZE * i)));
+		if (pagedir_is_dirty (t->pagedir, vpage))
+		{
+			lock_acquire (&filesys_lock);
+			off_t size = PGSIZE * m->page_count;
+			off_t file_ofs = PGSIZE * i;
+			file_write_at (m->file, vpage, size, file_ofs);
+			lock_release (&filesys_lock);
+		}
+	}
+
+	for (i=0; i<m->page_count; i++)
+	{
+		void *vaddr = m->base + PGSIZE * i;
+		deallocate_page (vaddr);
+	}
+
+	return 0;
+}
+/* --- project 3 end --- */
+
 /****************** Helper Functions on Memory Access ********************/
 static void
 check_user (const uint8_t *uaddr) {
@@ -474,7 +578,7 @@ memread_user (void *src, void *dst, size_t bytes)
   int32_t value;
   size_t i,t;
   for(i=0; i<bytes; i++) {
-    t = src+i;
+    t = (int)src+i;
     value = get_user(t);
     if(value != -1) {
 		*(char*)(dst + i) = value & 0xff;
@@ -497,11 +601,10 @@ find_file_desc(struct thread *t, int fd)
     return NULL;
   }
 
- 
   bool empty = list_empty(&t -> file_descriptors);
   if (!empty) {
     struct list_elem *e = list_begin(&t->file_descriptors);
-    for(e;e != list_end(&t->file_descriptors); e = list_next(e))
+    for(e; e != list_end(&t->file_descriptors); e = list_next(e))
     {
       struct file_desc *desc = list_entry(e, struct file_desc, elem);
       if(desc->id == fd) {
