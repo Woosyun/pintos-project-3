@@ -613,7 +613,6 @@ init_thread (struct thread *t, const char *name, int priority)
 #endif
 	/* --- project 3 start --- */
 	list_init (&t->mmap_li);
-	t->mmap_fd = 2;
 	/* --- project 3 end --- */
 }
 

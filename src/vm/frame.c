@@ -79,7 +79,6 @@ allocate_frame (struct page *p)
 		struct frame *f = &frames[i];
 		if (f->page != NULL)
 			continue;
-	//	if (f->page != NULL)
 		//A frame is available
 		f->page = p;
 		p->frame = f;

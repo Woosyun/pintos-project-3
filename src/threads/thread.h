@@ -107,7 +107,7 @@ struct thread
     void *user_esp; // stack pointer for page fault in kernel mode
     struct hash *pages;
     struct list mmap_li;
-    int mmap_fd;
+    //int mmap_fd;
     /* --- project 3 end --- */
 
     // Project 2: file descriptors and process table

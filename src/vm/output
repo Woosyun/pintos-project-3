@@ -257,12 +257,12 @@ Differences in `diff -u' format:
 ../../utils/pintos -v -k -T 300 --qemu  --filesys-size=2 -p tests/vm/page-linear -a page-linear --swap-size=4 -- -q  -f run page-linear < /dev/null 2> tests/vm/page-linear.errors > tests/vm/page-linear.output
 perl -I../.. ../../tests/vm/page-linear.ck tests/vm/page-linear tests/vm/page-linear.result
 FAIL tests/vm/page-linear
-run: TIMEOUT after 301 seconds of wall-clock time - load average: 1.01, 0.74, 0.56
+run: TIMEOUT after 301 seconds of wall-clock time - load average: 0.98, 0.73, 0.39
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/page-parallel -a page-parallel -p tests/vm/child-linear -a child-linear --swap-size=4 -- -q  -f run page-parallel < /dev/null 2> tests/vm/page-parallel.errors > tests/vm/page-parallel.output
 perl -I../.. ../../tests/vm/page-parallel.ck tests/vm/page-parallel tests/vm/page-parallel.result
 FAIL tests/vm/page-parallel
 Kernel panic in run: PANIC at ../../threads/palloc.c:140 in palloc_free_multiple(): assertion `bitmap_all (pool->used_map, page_idx, page_cnt)' failed.
-Call stack: 0xc0028adc 0xc00235d2 0xc0023616 0xc002bd2e 0xc002ab63 0xc00210eb 0xc002c550 0xc002c992 0xc0021d53 0xc0021e85 0x804a462
+Call stack: 0xc0028adc 0xc00235d2 0xc0023616 0xc002bd2e 0xc002ab63 0xc00210eb 0xc002c550 0xc002c992 0xc0021d53 0xc0021e85 0x804a462c
 Translation of call stack:
 In kernel.o:
 0xc0028adc: debug_panic (.../../lib/kernel/debug.c:38)
@@ -275,15 +275,11 @@ In kernel.o:
 0xc002c992: syscall_handler (.../../userprog/syscall.c:97)
 0xc0021d53: intr_handler (..../threads/interrupt.c:369)
 0xc0021e85: intr_entry (threads/intr-stubs.S:38)
-In tests/vm/page-parallel:
-0x0804a462: putchar (.../../lib/user/console.c:43)
-Translations of user virtual addresses above are based on a guess at
-the binary to use.  If this guess is incorrect, then those
-translations will be misleading.
+0x804a462c: (unknown)
 ../../utils/pintos -v -k -T 600 --qemu  --filesys-size=2 -p tests/vm/page-merge-seq -a page-merge-seq -p tests/vm/child-sort -a child-sort --swap-size=4 -- -q  -f run page-merge-seq < /dev/null 2> tests/vm/page-merge-seq.errors > tests/vm/page-merge-seq.output
 perl -I../.. ../../tests/vm/page-merge-seq.ck tests/vm/page-merge-seq tests/vm/page-merge-seq.result
 FAIL tests/vm/page-merge-seq
-run: TIMEOUT after 600 seconds of host CPU time
+run: TIMEOUT after 601 seconds of wall-clock time - load average: 1.02, 1.00, 0.72
 ../../utils/pintos -v -k -T 600 --qemu  --filesys-size=2 -p tests/vm/page-merge-par -a page-merge-par -p tests/vm/child-sort -a child-sort --swap-size=4 -- -q  -f run page-merge-par < /dev/null 2> tests/vm/page-merge-par.errors > tests/vm/page-merge-par.output
 perl -I../.. ../../tests/vm/page-merge-par.ck tests/vm/page-merge-par tests/vm/page-merge-par.result
 FAIL tests/vm/page-merge-par
@@ -302,46 +298,46 @@ pass tests/vm/page-shuffle
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-read -a mmap-read -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-read < /dev/null 2> tests/vm/mmap-read.errors > tests/vm/mmap-read.output
 perl -I../.. ../../tests/vm/mmap-read.ck tests/vm/mmap-read tests/vm/mmap-read.result
 FAIL tests/vm/mmap-read
-run: TIMEOUT after 66 seconds of wall-clock time - load average: 0.49, 0.87, 0.91
+run: TIMEOUT after 64 seconds of wall-clock time - load average: 0.49, 0.87, 0.87
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-close -a mmap-close -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-close < /dev/null 2> tests/vm/mmap-close.errors > tests/vm/mmap-close.output
 perl -I../.. ../../tests/vm/mmap-close.ck tests/vm/mmap-close tests/vm/mmap-close.result
 FAIL tests/vm/mmap-close
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.29, 0.75, 0.87
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.28, 0.74, 0.82
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-unmap -a mmap-unmap -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-unmap < /dev/null 2> tests/vm/mmap-unmap.errors > tests/vm/mmap-unmap.output
 perl -I../.. ../../tests/vm/mmap-unmap.ck tests/vm/mmap-unmap tests/vm/mmap-unmap.result
 FAIL tests/vm/mmap-unmap
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.82, 0.82, 0.88
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.65, 0.76, 0.82
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-overlap -a mmap-overlap -p tests/vm/zeros -a zeros --swap-size=4 -- -q  -f run mmap-overlap < /dev/null 2> tests/vm/mmap-overlap.errors > tests/vm/mmap-overlap.output
 perl -I../.. ../../tests/vm/mmap-overlap.ck tests/vm/mmap-overlap tests/vm/mmap-overlap.result
 FAIL tests/vm/mmap-overlap
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.97, 0.87, 0.90
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.95, 0.82, 0.84
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-twice -a mmap-twice -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-twice < /dev/null 2> tests/vm/mmap-twice.errors > tests/vm/mmap-twice.output
 perl -I../.. ../../tests/vm/mmap-twice.ck tests/vm/mmap-twice tests/vm/mmap-twice.result
 FAIL tests/vm/mmap-twice
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.49, 0.74, 0.85
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.50, 0.72, 0.80
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-write -a mmap-write --swap-size=4 -- -q  -f run mmap-write < /dev/null 2> tests/vm/mmap-write.errors > tests/vm/mmap-write.output
 perl -I../.. ../../tests/vm/mmap-write.ck tests/vm/mmap-write tests/vm/mmap-write.result
 FAIL tests/vm/mmap-write
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.38, 0.65, 0.81
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.41, 0.66, 0.78
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-exit -a mmap-exit -p tests/vm/child-mm-wrt -a child-mm-wrt --swap-size=4 -- -q  -f run mmap-exit < /dev/null 2> tests/vm/mmap-exit.errors > tests/vm/mmap-exit.output
 perl -I../.. ../../tests/vm/mmap-exit.ck tests/vm/mmap-exit tests/vm/mmap-exit.result
 FAIL tests/vm/mmap-exit
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.52, 0.64, 0.80
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.48, 0.64, 0.76
 ../../utils/pintos -v -k -T 600 --qemu  --filesys-size=2 -p tests/vm/mmap-shuffle -a mmap-shuffle --swap-size=4 -- -q  -f run mmap-shuffle < /dev/null 2> tests/vm/mmap-shuffle.errors > tests/vm/mmap-shuffle.output
 perl -I../.. ../../tests/vm/mmap-shuffle.ck tests/vm/mmap-shuffle tests/vm/mmap-shuffle.result
 FAIL tests/vm/mmap-shuffle
-run: TIMEOUT after 601 seconds of wall-clock time - load average: 0.39, 0.37, 0.55
+run: TIMEOUT after 601 seconds of wall-clock time - load average: 0.22, 0.29, 0.52
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-bad-fd -a mmap-bad-fd --swap-size=4 -- -q  -f run mmap-bad-fd < /dev/null 2> tests/vm/mmap-bad-fd.errors > tests/vm/mmap-bad-fd.output
 perl -I../.. ../../tests/vm/mmap-bad-fd.ck tests/vm/mmap-bad-fd tests/vm/mmap-bad-fd.result
 pass tests/vm/mmap-bad-fd
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-clean -a mmap-clean -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-clean < /dev/null 2> tests/vm/mmap-clean.errors > tests/vm/mmap-clean.output
 perl -I../.. ../../tests/vm/mmap-clean.ck tests/vm/mmap-clean tests/vm/mmap-clean.result
 FAIL tests/vm/mmap-clean
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.19, 0.31, 0.52
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.26, 0.28, 0.50
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-inherit -a mmap-inherit -p ../../tests/vm/sample.txt -a sample.txt -p tests/vm/child-inherit -a child-inherit --swap-size=4 -- -q  -f run mmap-inherit < /dev/null 2> tests/vm/mmap-inherit.errors > tests/vm/mmap-inherit.output
 perl -I../.. ../../tests/vm/mmap-inherit.ck tests/vm/mmap-inherit tests/vm/mmap-inherit.result
 FAIL tests/vm/mmap-inherit
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.26, 0.32, 0.51
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.23, 0.27, 0.48
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-misalign -a mmap-misalign -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-misalign < /dev/null 2> tests/vm/mmap-misalign.errors > tests/vm/mmap-misalign.output
 perl -I../.. ../../tests/vm/mmap-misalign.ck tests/vm/mmap-misalign tests/vm/mmap-misalign.result
 pass tests/vm/mmap-misalign
@@ -360,7 +356,7 @@ pass tests/vm/mmap-over-stk
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-remove -a mmap-remove -p ../../tests/vm/sample.txt -a sample.txt --swap-size=4 -- -q  -f run mmap-remove < /dev/null 2> tests/vm/mmap-remove.errors > tests/vm/mmap-remove.output
 perl -I../.. ../../tests/vm/mmap-remove.ck tests/vm/mmap-remove tests/vm/mmap-remove.result
 FAIL tests/vm/mmap-remove
-run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.40, 0.35, 0.51
+run: TIMEOUT after 61 seconds of wall-clock time - load average: 0.22, 0.27, 0.46
 ../../utils/pintos -v -k -T 60 --qemu  --filesys-size=2 -p tests/vm/mmap-zero -a mmap-zero --swap-size=4 -- -q  -f run mmap-zero < /dev/null 2> tests/vm/mmap-zero.errors > tests/vm/mmap-zero.output
 perl -I../.. ../../tests/vm/mmap-zero.ck tests/vm/mmap-zero tests/vm/mmap-zero.result
 pass tests/vm/mmap-zero

@@ -185,7 +185,6 @@ page_fault (struct intr_frame *f)
 
 PAGE_FAULT_FINISH:
 	/* project 3 end */
-
 	
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
