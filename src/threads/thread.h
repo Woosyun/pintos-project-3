@@ -104,7 +104,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     /* --- project 3 start --- */
-    uint8_t temp_esp; // stack pointer for page fault occurred in kernel
+    void *user_esp; // stack pointer for page fault in kernel mode
     struct hash *pages;
     struct list mmap_li;
     int mmap_fd;

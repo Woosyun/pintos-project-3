@@ -14,6 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "lib/kernel/hash.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -611,8 +612,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->executing_file = NULL;
 #endif
 	/* --- project 3 start --- */
-	t->pagedir = NULL;
-	hash_init (t->pages);
 	list_init (&t->mmap_li);
 	t->mmap_fd = 2;
 	/* --- project 3 end --- */

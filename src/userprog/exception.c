@@ -6,6 +6,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "vm/page.h"
+#include "threads/vaddr.h"
+#define MAX_STACK_SIZE 0X800000
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -158,10 +160,33 @@ page_fault (struct intr_frame *f)
     return;
   }
 
-	//TODO: pull page if user process and access rights violated
-	if (!handle_page_fault (f, fault_addr, not_present, write, user))
-		thread_exit ();	
+	/* project 3 start */
+	/*
+	if (handle_page_fault (f, fault_addr, not_present, write, user))
+		return;
+		*/
+	struct thread *t = thread_current ();
+	void *fault_page = (void *)pg_round_down (fault_addr);
+	if (!not_present)
+		goto PAGE_FAULT_FINISH;
+	void *esp = user ? f->esp : t->user_esp;
+	bool on_stack_frame = (esp <= fault_addr || fault_addr == f->esp - 4 || fault_addr == f->esp - 32);
+	bool is_stack_addr = (PHYS_BASE - MAX_STACK_SIZE <= fault_addr && fault_addr < PHYS_BASE);
+	if (on_stack_frame && is_stack_addr)
+	{
+		grow_stack (t->pages, t->pagedir, fault_addr);
+		if (find_page (t->pages, fault_page) == NULL)
+			goto PAGE_FAULT_FINISH;
+	}
+	else
+		if (!handle_page_fault (f, fault_addr, not_present, write, user))
+			goto PAGE_FAULT_FINISH;
+	return;
 
+PAGE_FAULT_FINISH:
+	/* project 3 end */
+
+	
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

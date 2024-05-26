@@ -45,7 +45,7 @@ void sys_close(int fd);
 int sys_read(int fd, void *buffer, unsigned size);
 int sys_write(int fd, const void *buffer, unsigned size);
 static int sys_mmap (int fd, void *addr);
-static int sys_munmap (int mmap_id);
+//static int sys_munmap (int mmap_id);
 
 struct lock filesys_lock;
 
@@ -76,7 +76,7 @@ syscall_handler (struct intr_frame *f)
 
   // The system call number is in the 32-bit word at the caller's stack pointer.
   memread_user(f->esp, &syscall_number, intsize);
-	thread_current ()->temp_esp = f->esp;
+	thread_current ()->user_esp = f->esp;
 
   // Dispatch w.r.t system call number
   // SYS_*** constants are defined in syscall-nr.h
@@ -225,7 +225,7 @@ syscall_handler (struct intr_frame *f)
       sys_close(fd);
       break;
     }
-
+	/* --- project 3 start --- */
 	case SYS_MMAP: // 13
 		{
 			int id;
@@ -241,9 +241,10 @@ syscall_handler (struct intr_frame *f)
 			int id;
 			memread_user (f->esp + 4, &id, sizeof(id));
 
-			sys_munmap (fd);
+			sys_munmap (id);
 			break;
 		}
+	/* --- project 3 end --- */
 
   /* unhandled case */
   default:
@@ -332,11 +333,10 @@ int sys_open(const char* file) {
   struct thread *current = thread_current();
   struct list* fd_list = &current->file_descriptors;
   bool empty = list_empty(fd_list);
-  if ( empty ) fd->id = 3;
-  else {
-	fd->id = (list_entry(list_back(fd_list),struct file_desc, elem)->id)+1;
-	//fd->id = (back->id) + 1;
-  }
+  if ( empty ) 
+		fd->id = 3;
+  else 
+		fd->id = (list_entry(list_back(fd_list),struct file_desc, elem)->id)+1;
   list_push_back(fd_list, &(fd->elem));
 
   lock_release (&filesys_lock);
@@ -407,8 +407,8 @@ int sys_read(int fd, void *buffer, unsigned size) {
   int ret;
 
   if(fd == STDIN) {
-    int i;
-    for(i = 0; i < (int)size; ++i) {
+    unsigned i;
+    for(i = 0; i < size; ++i) {
       if(! put_user(buffer + i, (int)input_getc()) ) {
         lock_release (&filesys_lock);
         sys_exit(-1); // segfault
@@ -421,6 +421,8 @@ int sys_read(int fd, void *buffer, unsigned size) {
     struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
     if(file_d && file_d->file) {
+			//load_pages
+			//load_pages (buffer, size);
       ret = file_read(file_d->file, buffer, size);
     }
     else // no such file or can't open
@@ -447,6 +449,7 @@ int sys_write(int fd, const void *buffer, unsigned size) {
     struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
     if(file_d && file_d->file) {
+			//load_pages (buffer, size);
       ret = file_write(file_d->file, buffer, size);
     }
     else // no such file or can't open
@@ -461,80 +464,87 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 int
 sys_mmap (int id, void *addr)
 {
+	//printf("(sys_mmap) start\n");
 	struct thread *t = thread_current ();
+	off_t file_size;
+
+	if (addr == NULL || pg_ofs (addr) != 0 || id <= 1)
+		return -1;
+
+	//open file
+	lock_acquire (&filesys_lock);
+	struct file *f;
 	struct file_desc *file_d = find_file_desc (t, id);
-	struct mmap *m = malloc (sizeof *m);
+	if (file_d!=NULL && file_d->file)
+		f = file_reopen (file_d->file);
+	if (f == NULL)
+		goto MMAP_FAIL;
+
+	file_size = file_length (f);
+	if (file_size == 0)
+		goto MMAP_FAIL;
+
+	// check whether pages don't exist
 	size_t offset;
-	off_t length;
-
-	if (m == NULL || addr == NULL || pg_ofs (addr) != 0 || fd <= 1)
-		return -1;
-	
-
-	lock_acquire (&filesys_lock);
-	m->file = file_reopen (file_d->file);
-	lock_release (&filesys_lock);
-	if (m->file == NULL)
-	{
-		free (m);
-		return -1;
+	for (offset = 0; offset < (size_t)file_size; offset += PGSIZE) {
+		void *page = addr + offset;
+		if (find_page (t->pages, page) != NULL)
+			goto MMAP_FAIL;
 	}
 
-	m->id = t->mmap_fd++;
-	m->base = addr;
-	m->page_count = 0;
-	list_push_front (&t->mmap_li, &m->mmap_elem);
+	// map them
+	for (offset = 0; offset < (size_t)file_size; offset += PGSIZE) {
+		void *page = addr + offset;
+		size_t read_bytes = (offset + PGSIZE < (size_t)file_size ? PGSIZE : file_size - offset);
+		size_t zero_bytes = PGSIZE - read_bytes;
 
-	lock_acquire (&filesys_lock);
-	length = file_length (m->file);
-	lock_release (&filesys_lock);
-	while (length > 0)
-	{
-		struct page *p = allocate_page ((uint8_t *)addr + offset, false);
-		if (p == NULL)
-		{
-			sys_munmap (m->id);
-			return -1;
-		}
-		p->file = m->file;
-		p->offset = offset;
-		p->file_bytes = length >= PGSIZE ? PGSIZE : length;
-		offset += p->file_bytes;
-		length -= p->file_bytes;
-		m->page_count++;
+		allocate_page (page, f, offset, read_bytes, zero_bytes, true);
 	}
+
+	// assign mmap
+	int mid;
+	if (!list_empty (&t->mmap_li))
+		mid = list_entry (list_back (&t->mmap_li), struct mmap, mmap_elem)->id + 1;
+	else
+		mid = 1;
+
+	struct mmap *m = (struct mmap *)malloc (sizeof (struct mmap));
+	m->id = mid;
+	m->file = f;
+	m->addr = addr;
+	m->size = file_size;
+	list_push_back (&t->mmap_li, &m->mmap_elem);
+
+	lock_release (&filesys_lock);
 	return m->id;
+
+MMAP_FAIL:
+	lock_release (&filesys_lock);
+	return -1;
 }
-static int
-sys_munmap (int mmap_id)
+bool
+sys_munmap (int id)
 {
+	//printf("(sys_munmap) start\n");
 	struct thread *t = thread_current ();
-	struct mmap *m = lookup_mmap (mmap_id);
+	struct mmap *m = lookup_mmap (t, id);
+	if (m == NULL)
+		return false;
+
+	lock_acquire (&filesys_lock);
+
+	size_t offset, file_size = m->size;
+	for (offset = 0; offset < file_size; offset += PGSIZE) {
+		void *addr = m->addr + offset;
+		size_t bytes = offset + PGSIZE < file_size ? PGSIZE : file_size - offset;
+		deallocate_page (t->pages, t->pagedir, addr, m->file, offset, bytes);
+	}
 
 	list_remove (&m->mmap_elem);
-
-	unsigned i=0;
-	for (; i < m->page_count; i++)
-	{
-		//if dirty, then write back to disk
-		const void *vpage = ((const void *)(m->base + (PGSIZE * i)));
-		if (pagedir_is_dirty (t->pagedir, vpage))
-		{
-			lock_acquire (&filesys_lock);
-			off_t size = PGSIZE * m->page_count;
-			off_t file_ofs = PGSIZE * i;
-			file_write_at (m->file, vpage, size, file_ofs);
-			lock_release (&filesys_lock);
-		}
-	}
-
-	for (i=0; i<m->page_count; i++)
-	{
-		void *vaddr = m->base + PGSIZE * i;
-		deallocate_page (vaddr);
-	}
-
-	return 0;
+	file_close (m->file);
+	free (m);
+	lock_release (&filesys_lock);
+	return true;
 }
 /* --- project 3 end --- */
 
@@ -579,13 +589,13 @@ memread_user (void *src, void *dst, size_t bytes)
   size_t i,t;
   for(i=0; i<bytes; i++) {
     t = (int)src+i;
-    value = get_user(t);
+    value = get_user((const uint8_t *)t);
     if(value != -1) {
-		*(char*)(dst + i) = value & 0xff;
-	}
-	else{  
-		fail_invalid_access();
-	}
+			*(char*)(dst + i) = value & 0xff;
+		}
+		else{  
+			fail_invalid_access();
+		}
   }
   return (int)bytes;
 }
@@ -601,17 +611,16 @@ find_file_desc(struct thread *t, int fd)
     return NULL;
   }
 
-  bool empty = list_empty(&t -> file_descriptors);
-  if (!empty) {
-    struct list_elem *e = list_begin(&t->file_descriptors);
-    for(e; e != list_end(&t->file_descriptors); e = list_next(e))
-    {
-      struct file_desc *desc = list_entry(e, struct file_desc, elem);
-      if(desc->id == fd) {
-        return desc;
-      }
-    }
-  }
+  struct list_elem *e = list_begin(&t->file_descriptors);
+	if (!list_empty (&t->file_descriptors)) {
+  	for(e = list_begin (&t->file_descriptors); e != list_end(&t->file_descriptors); e = list_next(e))
+  	{
+    	struct file_desc *desc = list_entry(e, struct file_desc, elem);
+    	if(desc->id == fd) {
+      	return desc;
+    	}
+  	}
+	}
 
   return NULL;
 }

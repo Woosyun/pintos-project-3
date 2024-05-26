@@ -18,10 +18,11 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "vm/page.h"
 #include "threads/malloc.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/mmap.h"
+#include "userprog/syscall.h"
 
 
 #ifdef DEBUG
@@ -32,7 +33,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static bool push_arguments (uint8_t *kpage, uint8_t *upage, const char *cmd_line, void **esp);
+static void push_arguments (const char *cmdline_tokens[], int argc, void **esp);
 
 /* Starts a new thread running a user program loaded from
    `cmdline`. The new thread may be scheduled (and may even exit)
@@ -126,12 +127,29 @@ start_process (void *pcb_)
   char *file_name = (char*) pcb->cmdline;
   bool success = false;
 
+	const char **cmdline_tokens = (const char**)palloc_get_page (0);
+	if (cmdline_tokens == NULL)
+		goto finish_step;
+
+	char *token;
+	char *save_ptr;
+	int count = 0;
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
+		cmdline_tokens[count++] = token;
+
   struct intr_frame if_;
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+	if (success)
+	{
+		push_arguments (cmdline_tokens, count, &if_.esp);
+	}
+	palloc_free_page (cmdline_tokens);
+
+finish_step:
 
   /* Assign PCB */
   // we maintain an one-to-one mapping between pid and tid, with identity function.
@@ -232,6 +250,15 @@ process_exit (void)
     palloc_free_page(desc); // see sys_open()
   }
 
+	/* project 3 start */
+	while (!list_empty (&cur->mmap_li))
+	{
+		struct list_elem *e = list_begin (&cur->mmap_li);
+		struct mmap *m = list_entry (e, struct mmap, mmap_elem);
+		sys_munmap (m->id);
+	}
+	/* project 3 end */
+
   // 2. clean up pcb object of all children processes
   struct list *child_list = &cur->child_list;
   while (!list_empty(child_list)) {
@@ -256,11 +283,17 @@ process_exit (void)
 
   // Unblock the waiting parent process, if any, from wait().
   // now its resource (pcb on page, etc.) can be freed.
+	cur->pcb->exited = true;
   sema_up (&cur->pcb->sema_wait);
 
   // Destroy the pcb object by itself, if it is orphan.
   // see (part 2) of above.
   if (cur->pcb->orphan == true) palloc_free_page (& cur->pcb);
+
+	/* project 3 start */
+	destroy_pages (cur->pages);
+	//cur->pages = NULL;
+	/* project 3 end */
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -359,7 +392,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (const char *cmd_line, void **esp);
+static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -386,10 +419,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
 	/* --- project 3 start --- */
-	t->pages = malloc (sizeof *(t->pages));
+	t->pages = pages_init ();
 	if (t->pages == NULL)
 		goto finish;
-	hash_init (t->pages, page_hash, page_cmp, NULL);
 	/* --- project 3 end --- */
 
   /* Open executable file. */
@@ -473,7 +505,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   }
 
   /* Set up stack. */
-  if (!setup_stack (file_name, esp))
+  if (!setup_stack (esp))
     goto finish;
 
   /* Start address. */
@@ -563,6 +595,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+	struct thread *t = thread_current ();
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0)
     {
@@ -572,143 +606,119 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-			/*
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
-
-      // Load this page.
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false;
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      // Add the page to the process's address space.
-      if (!install_page (upage, kpage, writable))
-        {
-          palloc_free_page (kpage);
-          return false;
-        }
-				*/
-
-			//TODO: allocate new page
 			/*--- project 3 start --- */
-			struct page *p = allocate_page (upage, writable);
+			ASSERT (pagedir_get_page (t->pagedir, upage) == NULL);
+			struct page *p;
+			p = find_page (t->pages, upage);
+			if (p == NULL)
+		  	p	= allocate_page (upage, file, ofs, read_bytes, zero_bytes, writable);
 			if (p == NULL)
 				return false;
-			p->file = file;
-			p->offset = ofs;
-			ofs += page_read_bytes;
-			p->file_bytes = page_read_bytes;
+			if (p->frame == NULL)
+				if (!allocate_frame (p))
+					return false;
+
+			if (file_read (file, p->frame->kva, page_read_bytes) != (int) page_read_bytes)
+			{
+				deallocate_frame (p->frame);
+				return false;
+			}
+			memset (p->frame->kva + page_read_bytes, 0, page_zero_bytes);
+			if (!install_page (p->addr, p->frame->kva, writable))
+			{
+				deallocate_frame (p->frame);
+				return false;
+			}
+			ofs += PGSIZE;
 			/* --- project 3 end --- */
 			
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
-
     }
   return true;
 }
-
-static void *
-push_argument (uint8_t *kpage, size_t *offset, const void *buf, size_t size)
-{
-	size_t temp = size;
-	while (size % 4 == 0)
-		temp += 1;
-	if (temp > *offset)
-		return NULL;
-
-	*offset -= temp;
-	memcpy (kpage + *offset + temp - size, buf, size);
-	return kpage + *offset + temp - size;
-}
 static void
-reverse_argv (int argc, char **argv)
+push_arguments (const char *cmdline_tokens[], int argc, void **esp)
 {
-	for (; argc > 1; argc -= 2, argv++)
+	int i, len = 0;
+	void *argv[argc];
+
+	/*
+	printf("argc : %d\n", argc);
+	for (i=0; i<argc; i++)
+		printf("token : %s, i : %d, esp : %p\n", cmdline_tokens[i], i, *esp);
+		*/
+
+	// push arguments
+	for (i = 0; i < argc; i++)
 	{
-		char *tmp = argv[0];
-		argv[0] = argv[argc - 1];
-		argv[argc - 1] = tmp;
+		len = strlen (cmdline_tokens[i]) + 1;
+		*esp -= len;
+		memcpy (*esp, cmdline_tokens[i], len);
+		argv[i] = *esp;
 	}
-}
-		
-static bool
-push_arguments (uint8_t *kpage, uint8_t *upage, const char *cmd_line, void **esp)
-{
-	size_t offset = PGSIZE;
-	char *cmd_line_copy;
-	char *save_ptr;
-	int argc = 0;
-	char **argv;
-	char *nul = NULL;
 
-	cmd_line_copy = push_argument (kpage, &offset, cmd_line, strlen (cmd_line) + 1);
-	push_argument (kpage, &offset, &nul, sizeof nul);
-	
-	char *karg = strtok_r (cmd_line_copy, " ", &save_ptr);;
-	argc++;
-	for (; karg != NULL; karg = strtok_r (NULL, " ", &save_ptr))
+	// word align
+	*esp = (void *)((unsigned int)(*esp) & 0xfffffffc);
+
+	// null
+	*esp -= 4;
+	*((uint32_t*) *esp) = 0;
+
+	// addrs of arguments
+	for (i=argc -1; i >= 0; i--)
 	{
-		void *uarg = upage + (karg - (char *)kpage);
-		push_argument (kpage, &offset, &uarg, sizeof uarg);
-		argc++;
+		*esp -= 4;
+		*((void **)*esp) = argv[i];
 	}
-	
-	argv = (char **)(upage + offset);
-	reverse_argv (argc, argv);
 
-	push_argument (kpage, &offset, &argv, sizeof argv);
-	push_argument (kpage, &offset, &argc, sizeof argc);
-	push_argument (kpage, &offset, &nul, sizeof nul);
+	// addr of stack
+	*esp -= 4;
+	*((void **) *esp) = (*esp + 4);
 
-	*esp = upage + offset;
-	return true;
+	// argc
+	*esp -= 4;
+	*((int*) *esp) = argc;
+
+	// return addr
+	*esp -= 4;
+	*((int*)*esp) = 0;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (const char *cmd_line, void **esp)
+setup_stack (void **esp)
 {
-	struct page *p = allocate_page ((uint8_t *)PHYS_BASE - PGSIZE, false);
+	/* --- project 3 start -- */
+	//printf("(setup_stack) start\n");
+	void *addr = (uint8_t *)PHYS_BASE - PGSIZE;
+	struct page *p = allocate_page (addr, NULL, 0, 0, 0, true);
 	if (p == NULL)
 		return false;
 
-	allocate_frame (p);
 	if (p->frame == NULL)
+	{
+		allocate_frame (p);
+		if (p->frame == NULL)
+			return false;
+	}
+
+	if (!install_page (addr, p->frame->kva, true))
+	{
+		deallocate_frame (p->frame);
 		return false;
+	}
+	//memset (p->frame->kva, 0, PGSIZE);
 
-	p->read_only = false;
-	// push command line input
-	/* --- project 3 start -- */
-	bool re = push_arguments (p->frame->kva, p->addr, cmd_line, esp);
-	
-	// unlock frame
-	lock_release (&p->frame->lock);
+	*esp = PHYS_BASE;
 
-	return re;
+	//printf("upage : %p, kva : %p\n", p->addr, p->frame->kva);
+
+	return true;
 	/* --- project 3 end -- */
-	/*
-  uint8_t *kpage;
-  bool success = false;
-
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
-  return success;
-	*/
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
